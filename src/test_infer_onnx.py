@@ -90,8 +90,62 @@ class RaspberryPiONNXInference:
         except Exception as e:
             raise RuntimeError(f"Failed to load ONNX model: {e}")
     
+    def _check_camera_devices(self):
+        """Check available camera devices and permissions"""
+        import glob
+        import subprocess
+        
+        # Check for video devices
+        video_devices = glob.glob('/dev/video*')
+        print(f"Available video devices: {video_devices}")
+        
+        # Check permissions
+        for device in video_devices:
+            try:
+                with open(device, 'rb') as f:
+                    print(f"✓ Can access {device}")
+            except PermissionError:
+                print(f"✗ Permission denied for {device} - try: sudo chmod 666 {device}")
+            except Exception as e:
+                print(f"? Error accessing {device}: {e}")
+        
+        # Check if libcamera is available
+        try:
+            result = subprocess.run(['libcamera-hello', '--version'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                print("✓ libcamera tools available")
+            else:
+                print("✗ libcamera tools not working properly")
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            print("✗ libcamera tools not found")
+        
+        # Check camera module detection
+        try:
+            with open('/proc/device-tree/model', 'r') as f:
+                model = f.read().strip()
+                print(f"Pi model: {model}")
+        except:
+            pass
+            
+        # Check for camera in device tree
+        try:
+            result = subprocess.run(['vcgencmd', 'get_camera'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                print(f"Camera detection: {result.stdout.strip()}")
+            else:
+                print("Could not check camera via vcgencmd")
+        except:
+            print("vcgencmd not available")
+    
     def setup_camera(self):
         """Initialize camera with multiple fallback options"""
+        print("=== Camera Setup Debug Info ===")
+        
+        # Check if camera devices exist
+        self._check_camera_devices()
+        
         camera_configs = [
             # Pi Camera Module 2 with libcamera (preferred for newer Pi OS)
             {
@@ -99,17 +153,35 @@ class RaspberryPiONNXInference:
                 'backend': cv2.CAP_GSTREAMER,
                 'name': 'Pi Camera (libcamera)'
             },
+            # Simplified libcamera pipeline
+            {
+                'pipeline': f"libcamerasrc ! video/x-raw,format=BGR ! videoconvert ! videoscale ! video/x-raw,width={self.camera_width},height={self.camera_height} ! appsink drop=1 max-buffers=1",
+                'backend': cv2.CAP_GSTREAMER,
+                'name': 'Pi Camera (libcamera simple)'
+            },
             # Pi Camera with legacy driver
             {
                 'pipeline': f"v4l2src device=/dev/video0 ! video/x-raw,width={self.camera_width},height={self.camera_height},framerate={self.camera_fps}/1 ! videoconvert ! appsink drop=1 max-buffers=1",
                 'backend': cv2.CAP_GSTREAMER,
                 'name': 'Pi Camera (v4l2)'
             },
+            # Try different video devices
+            {
+                'pipeline': f"v4l2src device=/dev/video1 ! video/x-raw,width={self.camera_width},height={self.camera_height},framerate={self.camera_fps}/1 ! videoconvert ! appsink drop=1 max-buffers=1",
+                'backend': cv2.CAP_GSTREAMER,
+                'name': 'Pi Camera (v4l2 video1)'
+            },
             # Direct V4L2 access
             {
                 'pipeline': 0,
                 'backend': cv2.CAP_V4L2,
-                'name': 'Direct V4L2'
+                'name': 'Direct V4L2 (/dev/video0)'
+            },
+            # Try video1 directly
+            {
+                'pipeline': 1,
+                'backend': cv2.CAP_V4L2,
+                'name': 'Direct V4L2 (/dev/video1)'
             },
             # Fallback to any available camera
             {
@@ -125,17 +197,38 @@ class RaspberryPiONNXInference:
                 self.cap = cv2.VideoCapture(config['pipeline'], config['backend'])
                 
                 if self.cap.isOpened():
-                    # Test if we can actually read frames
-                    ret, frame = self.cap.read()
-                    if ret and frame is not None:
-                        print(f"Successfully initialized {config['name']}")
-                        
-                        # Configure camera properties if using direct access
-                        if isinstance(config['pipeline'], int):
-                            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.camera_width)
-                            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.camera_height)
-                            self.cap.set(cv2.CAP_PROP_FPS, self.camera_fps)
-                            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    print(f"  Camera opened successfully with {config['name']}")
+                    
+                    # Configure camera properties if using direct access
+                    if isinstance(config['pipeline'], int):
+                        print(f"  Configuring direct camera properties...")
+                        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.camera_width)
+                        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.camera_height)
+                        self.cap.set(cv2.CAP_PROP_FPS, self.camera_fps)
+                        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                        # Add a small delay for camera to stabilize
+                        time.sleep(0.5)
+                    
+                    # Test frame capture multiple times
+                    print(f"  Testing frame capture...")
+                    frame_tests = []
+                    for i in range(5):
+                        ret, frame = self.cap.read()
+                        if ret and frame is not None:
+                            # Check if frame is actually valid (not all black/zeros)
+                            frame_mean = np.mean(frame)
+                            frame_std = np.std(frame)
+                            frame_tests.append((frame_mean, frame_std, frame.shape))
+                            print(f"    Test {i+1}: ret={ret}, shape={frame.shape}, mean={frame_mean:.2f}, std={frame_std:.2f}")
+                        else:
+                            print(f"    Test {i+1}: Failed to read frame (ret={ret})")
+                        time.sleep(0.1)  # Small delay between tests
+                    
+                    # Analyze frame tests
+                    valid_frames = [t for t in frame_tests if t[0] > 1.0 and t[1] > 1.0]  # Mean > 1 and some variation
+                    
+                    if valid_frames:
+                        print(f"✓ Successfully got {len(valid_frames)}/5 valid frames with {config['name']}")
                         
                         # Verify final settings
                         actual_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -143,9 +236,15 @@ class RaspberryPiONNXInference:
                         actual_fps = self.cap.get(cv2.CAP_PROP_FPS)
                         
                         print(f"Camera settings: {actual_width}x{actual_height} @ {actual_fps:.1f}fps")
+                        print(f"Frame analysis - Mean brightness: {valid_frames[-1][0]:.2f}, Variation: {valid_frames[-1][1]:.2f}")
                         return
                     else:
+                        print(f"✗ All frames appear to be black/invalid with {config['name']}")
+                        if frame_tests:
+                            print(f"  Frame stats: {frame_tests[-1]}")
                         self.cap.release()
+                else:
+                    print(f"  Failed to open camera with {config['name']}")
                         
             except Exception as e:
                 print(f"Failed to initialize {config['name']}: {e}")
@@ -308,7 +407,7 @@ class RaspberryPiONNXInference:
                         # Check for exit
                         key = cv2.waitKey(1) & 0xFF
                         if key == ord('q') or key == 27:  # 'q' or ESC
-                            break
+        break
                     except cv2.error as e:
                         if "can't open display" in str(e).lower() or "no such file or directory" in str(e).lower():
                             print("Display error detected - switching to headless mode")
@@ -338,7 +437,7 @@ class RaspberryPiONNXInference:
             self.cap.release()
         
         if not self.headless:
-            cv2.destroyAllWindows()
+cv2.destroyAllWindows()
         
         # Print final statistics
         if self.frame_count > 0:
@@ -377,8 +476,23 @@ def main():
                        help="Disable threaded frame capture")
     parser.add_argument("--headless", action="store_true", 
                        help="Run without display (for headless SSH operation)")
+    parser.add_argument("--camera-debug", action="store_true", 
+                       help="Show detailed camera debugging and exit")
     
     args = parser.parse_args()
+    
+    # Camera debug mode
+    if args.camera_debug:
+        print("=== Camera Debug Mode ===")
+        debug_system = RaspberryPiONNXInference()
+        debug_system._check_camera_devices()
+        print("\nTesting camera configurations...")
+        try:
+            debug_system.setup_camera()
+            print("✓ Camera setup successful!")
+        except Exception as e:
+            print(f"✗ Camera setup failed: {e}")
+        sys.exit(0)
     
     # Set up signal handler for graceful exit
     signal.signal(signal.SIGINT, signal_handler)
