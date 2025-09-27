@@ -407,7 +407,7 @@ class RaspberryPiONNXInference:
                         # Check for exit
                         key = cv2.waitKey(1) & 0xFF
                         if key == ord('q') or key == 27:  # 'q' or ESC
-        break
+                            break
                     except cv2.error as e:
                         if "can't open display" in str(e).lower() or "no such file or directory" in str(e).lower():
                             print("Display error detected - switching to headless mode")
