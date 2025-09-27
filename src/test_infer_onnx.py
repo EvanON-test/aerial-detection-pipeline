@@ -17,10 +17,15 @@ import queue
 import signal
 from contextlib import contextmanager
 
+# Force display for SSH connections
+if 'DISPLAY' not in os.environ:
+    os.environ['DISPLAY'] = ':0.0'
+    print("Setting DISPLAY=:0.0 for SSH connection")
+
 class RaspberryPiONNXInference:
     def __init__(self, model_path="models/yolov8n-sim.onnx", imgsz=416, 
                  camera_width=640, camera_height=480, camera_fps=30, 
-                 display_scale=1.0, use_threading=True):
+                 display_scale=1.0, use_threading=True, headless=False):
         """
         Initialize the Raspberry Pi ONNX inference system
         
@@ -32,6 +37,7 @@ class RaspberryPiONNXInference:
             camera_fps: Camera framerate
             display_scale: Scale factor for display window
             use_threading: Whether to use threaded frame capture
+            headless: Run without display (for headless SSH operation)
         """
         self.model_path = model_path
         self.imgsz = imgsz
@@ -40,6 +46,7 @@ class RaspberryPiONNXInference:
         self.camera_fps = camera_fps
         self.display_scale = display_scale
         self.use_threading = use_threading
+        self.headless = headless
         
         # Performance tracking
         self.frame_count = 0
@@ -245,7 +252,10 @@ class RaspberryPiONNXInference:
     def run(self):
         """Main inference loop"""
         print("Starting inference loop...")
-        print("Press 'q', 'ESC', or Ctrl+C to quit")
+        if not self.headless:
+            print("Press 'q', 'ESC', or Ctrl+C to quit")
+        else:
+            print("Running in headless mode - Press Ctrl+C to quit")
         
         self.running = True
         
@@ -278,24 +288,36 @@ class RaspberryPiONNXInference:
                 # Update statistics
                 self.update_statistics(inference_time)
                 
-                # Prepare display frame
-                if self.display_scale != 1.0:
-                    display_height = int(frame.shape[0] * self.display_scale)
-                    display_width = int(frame.shape[1] * self.display_scale)
-                    display_frame = cv2.resize(frame, (display_width, display_height))
+                # Display handling - only if not headless
+                if not self.headless:
+                    try:
+                        # Prepare display frame
+                        if self.display_scale != 1.0:
+                            display_height = int(frame.shape[0] * self.display_scale)
+                            display_width = int(frame.shape[1] * self.display_scale)
+                            display_frame = cv2.resize(frame, (display_width, display_height))
+                        else:
+                            display_frame = frame
+                        
+                        # Draw overlay
+                        display_frame = self.draw_overlay(display_frame, inference_time)
+                        
+                        # Show frame
+                        cv2.imshow("Raspberry Pi ONNX Inference", display_frame)
+                        
+                        # Check for exit
+                        key = cv2.waitKey(1) & 0xFF
+                        if key == ord('q') or key == 27:  # 'q' or ESC
+                            break
+                    except cv2.error as e:
+                        if "can't open display" in str(e).lower() or "no such file or directory" in str(e).lower():
+                            print("Display error detected - switching to headless mode")
+                            self.headless = True
+                        else:
+                            print(f"OpenCV display error: {e}")
                 else:
-                    display_frame = frame
-                
-                # Draw overlay
-                display_frame = self.draw_overlay(display_frame, inference_time)
-                
-                # Show frame
-                cv2.imshow("Raspberry Pi ONNX Inference", display_frame)
-                
-                # Check for exit
-                key = cv2.waitKey(1) & 0xFF
-                if key == ord('q') or key == 27:  # 'q' or ESC
-                    break
+                    # In headless mode, just add a small delay
+                    time.sleep(0.001)
                     
         except KeyboardInterrupt:
             print("\nInterrupted by user")
@@ -315,7 +337,8 @@ class RaspberryPiONNXInference:
         if self.cap:
             self.cap.release()
         
-        cv2.destroyAllWindows()
+        if not self.headless:
+            cv2.destroyAllWindows()
         
         # Print final statistics
         if self.frame_count > 0:
@@ -352,6 +375,8 @@ def main():
                        help="Display window scale factor")
     parser.add_argument("--no-threading", action="store_true", 
                        help="Disable threaded frame capture")
+    parser.add_argument("--headless", action="store_true", 
+                       help="Run without display (for headless SSH operation)")
     
     args = parser.parse_args()
     
@@ -367,7 +392,8 @@ def main():
             camera_height=args.camera_height,
             camera_fps=args.camera_fps,
             display_scale=args.display_scale,
-            use_threading=not args.no_threading
+            use_threading=not args.no_threading,
+            headless=args.headless
         )
         
         # Setup components
