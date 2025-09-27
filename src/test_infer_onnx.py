@@ -133,11 +133,81 @@ class RaspberryPiONNXInference:
             result = subprocess.run(['vcgencmd', 'get_camera'], 
                                   capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
-                print(f"Camera detection: {result.stdout.strip()}")
+                camera_status = result.stdout.strip()
+                print(f"Camera detection: {camera_status}")
+                
+                # If camera is supported but not detected, provide troubleshooting
+                if "supported=1" in camera_status and "detected=0" in camera_status:
+                    print("\n⚠️  CAMERA ISSUE DETECTED:")
+                    print("   Camera is supported but not detected!")
+                    print("   This usually means:")
+                    print("   1. Camera cable is not properly connected")
+                    print("   2. Camera interface is not enabled in raspi-config")
+                    print("   3. Camera module is faulty")
+                    print("   4. Using wrong camera interface (try CSI port)")
+                    
             else:
                 print("Could not check camera via vcgencmd")
         except:
             print("vcgencmd not available")
+        
+        # Additional diagnostics
+        self._additional_camera_diagnostics()
+    
+    def _additional_camera_diagnostics(self):
+        """Additional camera diagnostic commands"""
+        import subprocess
+        
+        print("\n=== Additional Camera Diagnostics ===")
+        
+        # Check if camera interface is enabled in config
+        try:
+            with open('/boot/config.txt', 'r') as f:
+                config_content = f.read()
+                if 'camera_auto_detect=1' in config_content:
+                    print("✓ camera_auto_detect=1 found in /boot/config.txt")
+                else:
+                    print("✗ camera_auto_detect=1 NOT found in /boot/config.txt")
+                    
+                if 'start_x=1' in config_content:
+                    print("✓ start_x=1 found in /boot/config.txt")
+                elif 'start_x=0' in config_content:
+                    print("✗ start_x=0 found - camera disabled")
+                else:
+                    print("? start_x not explicitly set")
+        except Exception as e:
+            print(f"Could not read /boot/config.txt: {e}")
+        
+        # Check libcamera device list
+        try:
+            result = subprocess.run(['libcamera-hello', '--list-cameras'], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                print(f"libcamera camera list:\n{result.stdout}")
+            else:
+                print(f"libcamera-hello --list-cameras failed: {result.stderr}")
+        except Exception as e:
+            print(f"Could not run libcamera-hello --list-cameras: {e}")
+        
+        # Check if camera is being used by another process
+        try:
+            result = subprocess.run(['lsof', '/dev/video0'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0 and result.stdout.strip():
+                print(f"⚠️  /dev/video0 is being used by:\n{result.stdout}")
+            else:
+                print("✓ /dev/video0 is not in use by other processes")
+        except:
+            print("Could not check if /dev/video0 is in use")
+        
+        # Check dmesg for camera-related messages
+        try:
+            result = subprocess.run(['dmesg', '|', 'grep', '-i', 'camera'], 
+                                  shell=True, capture_output=True, text=True, timeout=5)
+            if result.stdout.strip():
+                print(f"Recent camera-related dmesg:\n{result.stdout}")
+        except:
+            pass
     
     def setup_camera(self):
         """Initialize camera with multiple fallback options"""
