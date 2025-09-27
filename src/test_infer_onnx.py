@@ -437,7 +437,7 @@ class RaspberryPiONNXInference:
             self.cap.release()
         
         if not self.headless:
-cv2.destroyAllWindows()
+            cv2.destroyAllWindows()
         
         # Print final statistics
         if self.frame_count > 0:
