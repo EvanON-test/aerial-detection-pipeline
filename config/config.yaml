@@ -1,0 +1,53 @@
+assessment:
+  alert_thresholds:
+    critical: 0.9
+    high: 0.7
+    low: 0.3
+    medium: 0.5
+  priority_classes:
+  - drone
+  - aircraft
+  restricted_zones: []
+  threat_rules:
+    formation_bonus: 0.2
+    proximity_weight: 0.3
+    size_weight: 0.3
+    speed_weight: 0.4
+camera:
+  brightness: 50
+  contrast: 0
+  exposure_mode: auto
+  focus_mode: auto
+  fps: 30
+  resolution:
+  - 1920
+  - 1080
+logging:
+  backup_count: 5
+  file_path: logs/aerial_detection.log
+  level: INFO
+  log_detections: true
+  log_threats: true
+  log_tracking: true
+  max_file_size: 10MB
+model:
+  confidence_threshold: 0.5
+  fallback_model: models/yolov8n.pt
+  input_size:
+  - 640
+  - 640
+  max_detections: 100
+  nms_threshold: 0.4
+  primary_model: models/yolov8n.onnx
+system:
+  auto_optimize: true
+  fallback_cpu: true
+  max_memory_usage: 0.8
+  performance_monitoring: true
+  target_fps: 15
+tracker:
+  feature_extractor: mobilenet
+  iou_threshold: 0.3
+  max_age: 30
+  max_tracks: 100
+  min_hits: 3

@@ -1,0 +1,54 @@
+# Aerial Object Detection & Tracking Pipeline Configuration
+
+camera:
+  resolution: [1920, 1080]
+  fps: 30
+  exposure_mode: "auto"
+  focus_mode: "auto"
+  brightness: 50
+  contrast: 0
+
+model:
+  primary_model: "models/yolov8n.onnx"
+  fallback_model: "models/yolov8n.pt"
+  confidence_threshold: 0.5
+  nms_threshold: 0.4
+  max_detections: 100
+  input_size: [640, 640]
+
+tracker:
+  max_age: 30
+  min_hits: 3
+  iou_threshold: 0.3
+  feature_extractor: "mobilenet"
+  max_tracks: 100
+
+assessment:
+  threat_rules:
+    size_weight: 0.3
+    speed_weight: 0.4
+    proximity_weight: 0.3
+    formation_bonus: 0.2
+  alert_thresholds:
+    low: 0.3
+    medium: 0.5
+    high: 0.7
+    critical: 0.9
+  restricted_zones: []
+  priority_classes: ["drone", "aircraft"]
+
+logging:
+  level: "INFO"
+  file_path: "logs/aerial_detection.log"
+  max_file_size: "10MB"
+  backup_count: 5
+  log_detections: true
+  log_tracking: true
+  log_threats: true
+
+system:
+  max_memory_usage: 0.8
+  target_fps: 15
+  auto_optimize: true
+  fallback_cpu: true
+  performance_monitoring: true
