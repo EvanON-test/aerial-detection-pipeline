@@ -1,44 +1,47 @@
 """
-Detection module for aerial object detection.
+Detection module for aerial object detection and tracking system.
 
-This module contains the object detection components responsible for identifying
-aerial objects in camera frames using AI models. It provides implementations
-for various model formats and inference backends.
+This module provides the core inference engine and performance benchmarking
+utilities for running object detection models optimized for edge deployment.
 
-Planned Components:
-- **ONNX Inference Engine**: Optimized ONNX Runtime inference
-- **PyTorch Model Support**: Native PyTorch model inference
-- **TensorRT Optimization**: GPU-accelerated inference (where available)
-- **Model Management**: Loading, switching, and optimization
-- **Preprocessing Pipeline**: Frame preparation and augmentation
-- **Postprocessing**: NMS, filtering, and result formatting
+Key Components:
+- ModelInferenceEngine: High-performance inference with TensorRT optimization
+- PerformanceBenchmark: Comprehensive benchmarking and model comparison tools
 
-Key Features:
-- Multi-format model support (ONNX, PyTorch, TensorRT)
-- Hardware-specific optimizations (CPU, GPU, edge devices)
-- Configurable inference parameters
-- Performance monitoring and profiling
-- Automatic model fallback mechanisms
-- Batch processing capabilities
+The module is designed for deployment on resource-constrained hardware like
+Jetson Nano while maintaining high performance and reliability.
 
-The detection system is designed to:
-1. Load and optimize AI models for the target hardware
-2. Preprocess camera frames for model input
-3. Run inference to detect aerial objects
-4. Postprocess results to filter and format detections
-5. Provide performance metrics and monitoring
+Features:
+- ONNX and TensorRT model support with automatic conversion
+- TensorRT engine caching for faster startup times
+- GPU memory monitoring with CPU fallback
+- Performance benchmarking and optimization
+- Dynamic model switching for different operational modes
+- Preprocessing and postprocessing pipelines optimized for aerial objects
 
-Usage (planned):
-    from src.detection import ONNXInferenceEngine
+Usage:
+    from src.detection import ModelInferenceEngine
+    from src.models.data_models import ModelConfig
     
-    engine = ONNXInferenceEngine("models/yolov8n.onnx")
+    config = ModelConfig(
+        primary_model="models/yolov8n.onnx",
+        fallback_model="models/yolov8n-cpu.onnx",
+        confidence_threshold=0.5
+    )
+    
+    engine = ModelInferenceEngine(config)
+    engine.load_model("models/yolov8n.onnx", optimize=True)
+    
     detections = engine.infer(frame)
-
-Note: This module is currently under development. The inference functionality
-is currently implemented in src/test_infer_onnx.py for testing purposes.
+    stats = engine.get_performance_stats()
 """
 
-# Module is under development
-# Current inference testing is in src/test_infer_onnx.py
+from .model_inference_engine import ModelInferenceEngine
+from .performance_benchmark import PerformanceBenchmark, BenchmarkResult, run_quick_benchmark
 
-__all__ = []
+__all__ = [
+    'ModelInferenceEngine',
+    'PerformanceBenchmark', 
+    'BenchmarkResult',
+    'run_quick_benchmark'
+]
