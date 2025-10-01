@@ -1,5 +1,29 @@
 """
 Configuration management system with YAML/JSON support.
+
+This module provides a comprehensive configuration management system for the aerial
+detection pipeline. It supports both YAML and JSON configuration formats, automatic
+default configuration generation, runtime configuration updates, and validation.
+
+Key Features:
+- Automatic format detection (YAML/JSON)
+- Default configuration generation
+- Runtime configuration reloading
+- Comprehensive validation
+- Type-safe configuration objects
+- Hot-reload capability for development
+
+The configuration system manages settings for:
+- Camera parameters (resolution, FPS, exposure)
+- Model inference settings (thresholds, input sizes)
+- Tracking parameters (age limits, IoU thresholds)
+- Threat assessment rules and thresholds
+- System performance and logging settings
+
+Example:
+    config_manager = ConfigurationManager("config/config.yaml")
+    camera_config = config_manager.get_camera_config()
+    model_config = config_manager.get_model_config()
 """
 
 import json
@@ -16,13 +40,46 @@ from ..models.data_models import (
 
 
 class ConfigurationManager(ConfigurationInterface):
-    """Configuration manager supporting YAML and JSON formats."""
+    """
+    Configuration manager supporting YAML and JSON formats.
+    
+    This class provides a complete configuration management solution with support for:
+    - Multiple file formats (YAML, JSON)
+    - Automatic default configuration creation
+    - Runtime configuration updates and validation
+    - Hot-reload capability for development
+    - Type-safe configuration object generation
+    
+    The manager automatically detects file format based on extension and provides
+    seamless conversion between internal dictionary representation and typed
+    configuration objects for different system components.
+    
+    Attributes:
+        config_path (Path): Path to the configuration file
+        config_data (Dict[str, Any]): Current configuration data
+        _last_modified (Optional[float]): Last modification time for hot-reload
+        _default_config (Dict[str, Any]): Default configuration template
+    """
     
     def __init__(self, config_path: str):
-        """Initialize configuration manager.
+        """
+        Initialize configuration manager.
+        
+        Creates a new configuration manager instance and loads configuration from
+        the specified file. If the file doesn't exist, creates a default configuration.
+        Automatically detects file format (YAML/JSON) based on file extension.
         
         Args:
-            config_path: Path to configuration file (YAML or JSON)
+            config_path (str): Path to configuration file (YAML or JSON format).
+                             Supported extensions: .yaml, .yml, .json
+        
+        Raises:
+            RuntimeError: If configuration file cannot be loaded or created
+            ValueError: If file format is not supported
+        
+        Example:
+            >>> config_manager = ConfigurationManager("config/system.yaml")
+            >>> camera_config = config_manager.get_camera_config()
         """
         self.config_path = Path(config_path)
         self.config_data: Dict[str, Any] = {}
@@ -90,7 +147,23 @@ class ConfigurationManager(ConfigurationInterface):
         self._load_config()
     
     def _load_config(self) -> None:
-        """Load configuration from file."""
+        """
+        Load configuration from file with format auto-detection.
+        
+        Automatically detects file format based on extension and loads the
+        configuration data. If the file doesn't exist, creates a default
+        configuration. Merges loaded configuration with defaults to ensure
+        all required keys are present.
+        
+        Supported formats:
+        - YAML (.yaml, .yml)
+        - JSON (.json)
+        
+        Raises:
+            yaml.YAMLError: If YAML file is malformed
+            json.JSONDecodeError: If JSON file is malformed
+            IOError: If file cannot be read
+        """
         if not self.config_path.exists():
             self._create_default_config()
             return
@@ -111,19 +184,54 @@ class ConfigurationManager(ConfigurationInterface):
             self.config_data = self._default_config.copy()
     
     def _create_default_config(self) -> None:
-        """Create default configuration file."""
+        """
+        Create default configuration file.
+        
+        Generates a complete default configuration with sensible defaults for all
+        system components. Creates the parent directory if it doesn't exist.
+        The default configuration includes settings for camera, model inference,
+        tracking, threat assessment, logging, and system performance.
+        
+        The created file will use the format specified by the file extension
+        in the config_path (YAML or JSON).
+        """
         self.config_data = self._default_config.copy()
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         self.save_config()
     
     def _merge_with_defaults(self) -> None:
-        """Merge loaded config with defaults to ensure all keys exist."""
+        """
+        Merge loaded config with defaults to ensure all keys exist.
+        
+        Performs a deep merge of the loaded configuration with the default
+        configuration template. This ensures that any missing keys in the
+        user configuration are filled with sensible defaults, preventing
+        KeyError exceptions during runtime.
+        
+        The merge process:
+        1. Starts with default configuration as base
+        2. Recursively merges user configuration values
+        3. Preserves user settings while adding missing defaults
+        4. Handles nested dictionary structures properly
+        """
         def merge_dict(default: Dict[str, Any], loaded: Dict[str, Any]) -> Dict[str, Any]:
+            """
+            Recursively merge two dictionaries.
+            
+            Args:
+                default: Default configuration dictionary
+                loaded: User-provided configuration dictionary
+                
+            Returns:
+                Merged configuration dictionary
+            """
             result = default.copy()
             for key, value in loaded.items():
                 if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                    # Recursively merge nested dictionaries
                     result[key] = merge_dict(result[key], value)
                 else:
+                    # Override with user value
                     result[key] = value
             return result
         

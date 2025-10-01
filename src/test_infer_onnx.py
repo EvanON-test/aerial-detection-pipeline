@@ -1,7 +1,57 @@
 #!/usr/bin/env python3
 """
-Raspberry Pi 4 ONNX Inference Test with Camera Module 2
-Optimized for performance and reliability on RPi4 hardware
+Raspberry Pi 4 ONNX Inference Test with Camera Module 2.
+
+This module provides a comprehensive testing and debugging tool for ONNX model
+inference on Raspberry Pi 4 hardware with Camera Module 2. It's designed to:
+
+1. **Test Camera Connectivity**: Diagnose camera hardware and driver issues
+2. **Validate Model Loading**: Ensure ONNX models load correctly with optimizations
+3. **Performance Benchmarking**: Measure inference speed and system performance
+4. **Debug Display Issues**: Handle headless SSH connections and display problems
+5. **Optimize for RPi4**: Use CPU-specific optimizations and threading
+
+Key Features:
+- Multiple camera backend fallbacks (libcamera, v4l2, direct access)
+- Comprehensive camera diagnostics and troubleshooting
+- Threaded frame capture for improved performance
+- Real-time performance monitoring and statistics
+- Headless operation support for SSH connections
+- Graceful error handling and resource cleanup
+
+Hardware Requirements:
+- Raspberry Pi 4 (2GB+ RAM recommended)
+- Camera Module 2 or compatible USB camera
+- Raspberry Pi OS with camera interface enabled
+
+Software Dependencies:
+- OpenCV with GStreamer support
+- ONNX Runtime (CPU optimized)
+- NumPy for array operations
+- libcamera tools (for newer Pi OS versions)
+
+Usage Examples:
+    # Basic inference test with default settings
+    python src/test_infer_onnx.py
+    
+    # Test with custom model and resolution
+    python src/test_infer_onnx.py --model models/yolov8n.onnx --imgsz 640
+    
+    # Camera diagnostics mode
+    python src/test_infer_onnx.py --camera-debug
+    
+    # Headless operation for SSH
+    python src/test_infer_onnx.py --headless
+
+Performance Notes:
+- Optimized for RPi4 CPU with memory arena settings
+- Uses threaded capture to improve frame rate
+- Automatically adjusts display scale for performance
+- Provides detailed performance statistics and monitoring
+
+Author: Aerial Detection Team
+Version: 2.0.0
+License: MIT
 """
 
 import cv2
@@ -17,27 +67,66 @@ import queue
 import signal
 from contextlib import contextmanager
 
-# Force display for SSH connections
+# Configure display environment for SSH connections
+# This ensures OpenCV can create windows even when connected via SSH
 if 'DISPLAY' not in os.environ:
     os.environ['DISPLAY'] = ':0.0'
-    print("Setting DISPLAY=:0.0 for SSH connection")
+    print("🖥️  Setting DISPLAY=:0.0 for SSH connection")
 
 class RaspberryPiONNXInference:
+    """
+    Raspberry Pi 4 optimized ONNX inference system with camera integration.
+    
+    This class provides a complete inference pipeline optimized for Raspberry Pi 4
+    hardware, including camera capture, model inference, performance monitoring,
+    and display management. It handles the complexities of RPi4 camera systems
+    and provides robust error handling for common hardware issues.
+    
+    Key Features:
+    - Multi-backend camera support (libcamera, v4l2, USB)
+    - CPU-optimized ONNX Runtime configuration
+    - Threaded frame capture for improved performance
+    - Real-time performance monitoring
+    - Comprehensive camera diagnostics
+    - Headless operation support
+    
+    Attributes:
+        model_path (str): Path to ONNX model file
+        imgsz (int): Model input size (square)
+        camera_width (int): Camera capture width
+        camera_height (int): Camera capture height
+        camera_fps (int): Target camera frame rate
+        display_scale (float): Display window scaling factor
+        use_threading (bool): Enable threaded frame capture
+        headless (bool): Run without display output
+    """
+    
     def __init__(self, model_path="models/yolov8n-sim.onnx", imgsz=416, 
                  camera_width=640, camera_height=480, camera_fps=30, 
                  display_scale=1.0, use_threading=True, headless=False):
         """
-        Initialize the Raspberry Pi ONNX inference system
+        Initialize the Raspberry Pi ONNX inference system.
+        
+        Sets up the inference pipeline with optimized settings for RPi4 hardware.
+        Initializes performance tracking, threading components, and prepares
+        for camera and model initialization.
         
         Args:
-            model_path: Path to ONNX model file
-            imgsz: Input size for model inference
-            camera_width: Camera capture width
-            camera_height: Camera capture height  
-            camera_fps: Camera framerate
-            display_scale: Scale factor for display window
-            use_threading: Whether to use threaded frame capture
-            headless: Run without display (for headless SSH operation)
+            model_path (str): Path to ONNX model file (default: "models/yolov8n-sim.onnx")
+            imgsz (int): Input size for model inference, must be square (default: 416)
+            camera_width (int): Camera capture width in pixels (default: 640)
+            camera_height (int): Camera capture height in pixels (default: 480)
+            camera_fps (int): Target camera framerate (default: 30)
+            display_scale (float): Scale factor for display window (default: 1.0)
+            use_threading (bool): Enable threaded frame capture for performance (default: True)
+            headless (bool): Run without display for SSH operation (default: False)
+        
+        Note:
+            The imgsz parameter should match your model's expected input size.
+            Common values are 416, 640, or 320 depending on the model variant.
+            
+            Threading is recommended for better performance but can be disabled
+            for debugging or on systems with limited resources.
         """
         self.model_path = model_path
         self.imgsz = imgsz

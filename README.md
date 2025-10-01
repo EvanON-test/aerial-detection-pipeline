@@ -1,4 +1,4 @@
-# Aerial Object Detection & Tracking Pipeline
+# Aerial Detection Pipeline
 
 A real-time aerial object detection and tracking system optimized for Jetson Nano 2GB hardware using state-of-the-art computer vision models.
 
